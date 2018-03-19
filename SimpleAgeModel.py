@@ -1,12 +1,9 @@
 import configparser
 import numpy as np
-#import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from scipy.interpolate import interp1d
 
-config = configparser.ConfigParser()
-config.read('config/config.ini')
 
 # TODO: make a more flexible read-in, have pandas parse xlsx, hdf
 def import_data(config):
@@ -20,11 +17,12 @@ def import_data(config):
         # Read in each datafrmae
         data[key] = pd.read_csv(os.path.join(fp, value))
         # Convert all column header names to those standard names specified in the config file
-        data[key] = data[key].rename(columns = dict(config._sections['DATAFRAME_SPECIFICS']))
+        data[key] = data[key].rename(columns=dict(config._sections['DATAFRAME_SPECIFICS']))
         if 'AGE' not in data[key].columns:
             data[key]['AGE'] = np.nan
 
     return data
+
 
 class SimpleAgeModel(object):
     """
@@ -46,14 +44,14 @@ class SimpleAgeModel(object):
         return bz_list
 
     def find_nearest(self, array, value):
-        idx = (np.abs(array-float(value))).argmin()
+        idx = (np.abs(array - float(value))).argmin()
         return int(idx)
 
     def return_sed_rate(self, age_matrix):
         """
         Find the sed rates between the points in an age matrix.
         """
-        sed_rate = pd.DataFrame(columns = ['rate'])
+        sed_rate = pd.DataFrame(columns=['rate'])
         sed_rate['rate'] = age_matrix['date'].diff() / age_matrix['height'].diff()
         sed_rate = sed_rate.dropna()
         return sed_rate
@@ -65,8 +63,8 @@ class SimpleAgeModel(object):
         age_matrix = pd.DataFrame()
         i = 0
         for key, value in self.config['AGE_MATRIX'].items():
-            age_matrix.loc[i,'height'] = float(key)
-            age_matrix.loc[i,'date'] =  float(value)
+            age_matrix.loc[i, 'height'] = float(key)
+            age_matrix.loc[i, 'date'] = float(value)
             i = i + 1
 
         return age_matrix
@@ -76,16 +74,15 @@ class SimpleAgeModel(object):
         Create reference section age model.
         """
         age_matrix = self.get_reference_age_matrix()
-#        sed_rate = self.return_sed_rate(age_matrix)
-#        df = self.data[self.ref_sec].copy()
-
         x_list = np.array(self.data[self.ref_sec]['SAMP_HEIGHT'])
         model_list = []
         constraint_list = []
 
-        for i in np.arange(0, age_matrix.shape[0]-1):
-            m = interp1d(age_matrix.loc[i: i + 1,'height'], age_matrix.loc[i: i + 1,'date'],
-                             bounds_error=False, fill_value='extrapolate')
+        for i in np.arange(0, age_matrix.shape[0] - 1):
+            m = interp1d(
+                age_matrix.loc[i: i + 1, 'height'], age_matrix.loc[i: i + 1, 'date'],
+                bounds_error=False, fill_value='extrapolate'
+            )
             model_list.append(m)
 
             lower_bound = age_matrix.loc[i, 'height']
@@ -93,16 +90,13 @@ class SimpleAgeModel(object):
 
             if i == 0:
                 lower_bound = self.data[self.ref_sec].loc[0, 'SAMP_HEIGHT']
-            if i == age_matrix.shape[0]-2:
+            if i == age_matrix.shape[0] - 2:
                 upper_bound = np.nanmax(self.data[self.ref_sec]['SAMP_HEIGHT'])
 
             constraint_list.append([lower_bound < x for x in x_list <= upper_bound])
 
         ages = np.piecewise(x_list, constraint_list, model_list)
-        self.data[self.ref_sec]['AGE'] = ages
-        self.ref_model = {'x_list': x_list, 
-                          'constraint_list': constraint_list,
-                          'model_list': model_list}
+        self.data[self.ref_sec]['AGE'] = ages * -1
 
         return True
 
@@ -132,13 +126,14 @@ class SimpleAgeModel(object):
 
         temp_sec_df = sec_df[sec_df['FIRST_OCCURRENCE'].isin(select_bz_list)].set_index('FIRST_OCCURRENCE')
 
-        age_matrix = pd.DataFrame([temp_sec_df.loc[select_bz_list, 'BIOHEIGHT'].reset_index(drop=True), 
-                                   ref_df.loc[bioheight_inds, 'AGE'].reset_index(drop=True)]).T.reset_index(drop=True)
+        age_matrix = pd.DataFrame(
+            [temp_sec_df.loc[select_bz_list, 'BIOHEIGHT'].reset_index(drop=True),
+             ref_df.loc[bioheight_inds, 'AGE'].reset_index(drop=True) * -1]
+        ).T.reset_index(drop=True)
 
-        age_matrix = age_matrix.rename(columns= {'BIOHEIGHT': 'height', 'AGE': 'date'})
+        age_matrix = age_matrix.rename(columns={'BIOHEIGHT': 'height', 'AGE': 'date'})
 
         return age_matrix
-
 
     def create_age_model(self, sec):
         """
@@ -147,13 +142,15 @@ class SimpleAgeModel(object):
         self.create_reference_age_model()
         age_matrix = self.correlate_sec_biozones(sec)
 
-        x_list = np.array(self.data[sec]['SAMP_HEIGHT'].dropna())
+        x_list = np.array(self.data[sec]['SAMP_HEIGHT'])
         model_list = []
         constraint_list = []
 
-        for i in np.arange(0, age_matrix.shape[0]-1):
-            m = interp1d(age_matrix.loc[i: i + 1,'height'], age_matrix.loc[i: i + 1,'date'],
-                             bounds_error=False, fill_value='extrapolate')
+        for i in np.arange(0, age_matrix.shape[0] - 1):
+            m = interp1d(
+                age_matrix.loc[i: i + 1, 'height'], age_matrix.loc[i: i + 1, 'date'],
+                bounds_error=False, fill_value='extrapolate'
+            )
             model_list.append(m)
 
             lower_bound = age_matrix.loc[i, 'height']
@@ -161,13 +158,14 @@ class SimpleAgeModel(object):
 
             if i == 0:
                 lower_bound = self.data[sec].loc[0, 'SAMP_HEIGHT']
-            if i == age_matrix.shape[0]-2:
+            if i == age_matrix.shape[0] - 2:
                 upper_bound = np.nanmax(self.data[sec]['SAMP_HEIGHT'])
 
-            constraint_list.append(list(np.array([lower_bound <= x for x in x_list]) * 
+            constraint_list.append(list(np.array([lower_bound <= x for x in x_list]) *
                                         np.array([x <= upper_bound for x in x_list])))
 
-        ages = np.piecewise(x_list, constraint_list, model_list)
+        ages = np.piecewise(x_list, constraint_list, model_list) * -1
+        self.data[sec]['AGE'] = ages
 
         return (ages, age_matrix)
 
@@ -177,4 +175,6 @@ if __name__ == "__main__":
     config.read('config/config.ini')
     data = import_data(config)
     ageModel = SimpleAgeModel(config, data, 'mill')
-    a, b = ageModel.create_age_model('lb')
+    new_data = {}
+    for key in config['SECTION_DATA_FILES'].keys():
+        ageModel.create_age_model(key)
